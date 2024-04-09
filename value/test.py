@@ -1,0 +1,15 @@
+# from my_lpips import util_of_lpips
+# x=util_of_lpips('alex')
+# x.calc_lpips("loss_G.png","loss_D.png")
+# print(x)
+
+import lpips
+# loss_fn_alex = lpips.LPIPS(net='alex') # best forward scores
+# loss_fn_vgg = lpips.LPIPS(net='vgg') # closer to "traditional" perceptual loss, when used for optimization
+#
+# import torch
+# img0 = torch.zeros(1,3,64,64) # image should be RGB, IMPORTANT: normalized to [-1,1]
+# img1 = torch.zeros(1,3,64,64)
+# d = loss_fn_alex(img0, img1)
+
+lpips_model = lpips.LPIPS(net="alex")
