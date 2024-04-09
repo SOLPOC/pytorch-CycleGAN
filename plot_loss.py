@@ -85,4 +85,5 @@ def plot_all(log_dir,save_dir):
 
 
 if __name__ == '__main__':
-    plot_all("shuimo_cyclegan", "map_unet")
+    # plot_all("shuimo_cyclegan", "map_unet")
+    plot_all("map_resnet", "map_resnet")

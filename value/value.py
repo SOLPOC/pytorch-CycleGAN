@@ -96,6 +96,16 @@ def crossline():
     print("--------------------------------------------------")
 
 def value(results_dir,datasets_dir,transform=False):
+    """
+    方向A->B
+    Args:
+        results_dir:
+        datasets_dir:
+        transform:
+
+    Returns:
+
+    """
 
     print("Start value results")
 
@@ -127,29 +137,36 @@ def value(results_dir,datasets_dir,transform=False):
     output_lines = os.popen(cmd).readlines()
     pattern = r"FID:\s*(\d+\.\d+)"
     matches = re.findall(pattern, str(output_lines))
-    FID=str(matches[0])
+    FID=float(str(matches[0]))
 
     B_real_dir="../results/"+results_dir+"/test_latest/images/B_real"
     B_fake_dir="../results/"+results_dir+"/test_latest/images/B_fake"
 
     # PSNR计算方式：B_real和B_fake文件夹随机图片之间计算psnr并取平均值，重复以上过程取平均值
     print("Calculate PSNR score...")
-    PSNR=get_mean_PSNR(B_fake_dir,B_real_dir,100)
+    PSNR=round(get_mean_PSNR(B_fake_dir,B_real_dir,100),4)
 
     # SSIM计算方式：B_real和B_fake文件夹随机图片之间计算ssim并取平均值，重复以上过程取平均值
     print("Calculate SSIM score...")
     SSIM=get_mean_SSIM(B_fake_dir,B_real_dir,10)
 
     crossline()
-    print("FID : "+str(FID))
-    print("PSNR : " + str(PSNR))
-    print("SSIM : " + str(SSIM))
+    print("FID : "+str(round(FID,4)))
+    print("PSNR : " + str(round(PSNR,4)))
+    print("SSIM : " + str(round(SSIM,4)))
     crossline()
+
+    str_to_save = "FID : "+str(round(FID,4))+"\n"+"PSNR : " + str(round(PSNR,4))+"\n"+"SSIM : " + str(round(SSIM,4))
+
+    with open("../results/"+results_dir+"/value.txt", "w", encoding="utf-8") as f:
+        f.write(str_to_save)
+
 
 
 
 if __name__ == "__main__":
-    value("shuimo_unet","shuimo",transform=True)
+    # value("shuimo_unet","shuimo",transform=True)
+    value("map_resnet", "maps", transform=True)
 
 
 
