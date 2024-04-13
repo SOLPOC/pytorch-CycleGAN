@@ -95,19 +95,10 @@ def count_files_in_folder(folder_path):
 def crossline():
     print("--------------------------------------------------")
 
-def value(results_dir,datasets_dir,transform=False):
-    """
-    方向A->B
-    Args:
-        results_dir:
-        datasets_dir:
-        transform:
+def value(results_dir,datasets_dir,transform=False,direction="both"):
 
-    Returns:
+    print("Start to value results")
 
-    """
-
-    print("Start value results")
 
     split("../results/"+results_dir+"/test_latest/images") # 分割结果文件夹
     print("Split test results folder into fake and real folders")
@@ -165,9 +156,12 @@ def value(results_dir,datasets_dir,transform=False):
 
 
 if __name__ == "__main__":
-    # value("shuimo_unet","shuimo",transform=True)
+    # value("shuimo_unet","shuimo",transform=True,dircetion="both")
+    # value("shuimo_resnet","shuimo",transform=True,dircetion="both")
     value("map_resnet", "maps", transform=True)
-
+    value("map_unet", "maps", transform=True)
+    # value("painting_resnet", "vangogh2photo", transform=True)
+    # value("painting_unet", "vangogh2photo", transform=True)
 
 
 
