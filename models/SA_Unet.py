@@ -34,10 +34,10 @@ class conv_block(nn.Module):
         self.conv = nn.Sequential(
             nn.Conv2d(ch_in, ch_out, kernel_size=3, stride=1, padding=1, bias=True),
             nn.BatchNorm2d(ch_out),
-            nn.ReLU(inplace=True),
+            nn.LeakyReLU(0.2,inplace=True),
             nn.Conv2d(ch_out, ch_out, kernel_size=3, stride=1, padding=1, bias=True),
             nn.BatchNorm2d(ch_out),
-            nn.ReLU(inplace=True)
+            nn.LeakyReLU(0.2,inplace=True)
         )
 
     def forward(self, x):
@@ -51,7 +51,7 @@ class up_conv(nn.Module):
         self.up = nn.Sequential(
             nn.Upsample(scale_factor=2),
             nn.Conv2d(ch_in, ch_out, kernel_size=3, stride=1, padding=1, bias=True),
-            nn.BatchNorm2d(ch_out),
+            nn.InstanceNorm2d(ch_out),
             nn.ReLU(inplace=True)
         )
 

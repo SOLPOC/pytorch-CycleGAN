@@ -82,6 +82,7 @@ if __name__ == '__main__':
 # --dataroot datasets/maps/testA --name map_resnet --model test --no_dropout
 # --dataroot datasets/maps/testA --name map_unet --model test --no_dropout --netG unet_256
 # --dataroot datasets/maps/testA --name map_unet --model test --no_dropout --netG unet_256 --netD pixel
+# --dataroot datasets/maps/testA --name map_unet_cbam --model test --no_dropout --netG unet_256
 
 # --dataroot datasets/shuimo/testA --name shuimo_resnet --model test --no_dropout
 # --dataroot datasets/shuimo/testA --name shuimo_unet --model test --no_dropout --netG unet_256
