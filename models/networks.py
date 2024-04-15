@@ -5,7 +5,7 @@ import functools
 from torch.optim import lr_scheduler
 from torch.nn import Flatten
 import torch.nn.functional as F
-from . import SA_Unet
+from .MyUnet import Unet2
 
 
 ###############################################################################
@@ -204,8 +204,9 @@ def define_G(input_nc, output_nc, ngf, netG, norm='batch', use_dropout=False, in
     elif netG == 'unet_128':
         net = UnetGenerator(input_nc, output_nc, 7, ngf, norm_layer=norm_layer, use_dropout=use_dropout)
     elif netG == 'unet_256':
-        net = UnetGenerator(input_nc, output_nc, 8, ngf, norm_layer=norm_layer, use_dropout=use_dropout)
+        # net = UnetGenerator(input_nc, output_nc, 8, ngf, norm_layer=norm_layer, use_dropout=use_dropout)
         # net = SA_Unet.AttU_Net(input_nc, output_nc)
+        net = Unet2(3,3)
     else:
         raise NotImplementedError('Generator model name [%s] is not recognized' % netG)
     return init_net(net, init_type, init_gain, gpu_ids)
@@ -599,49 +600,79 @@ class NLayerDiscriminator(nn.Module):
             n_layers (int)  -- the number of conv layers in the discriminator
             norm_layer      -- normalization layer
         """
+        # super(NLayerDiscriminator, self).__init__()
+        # if type(norm_layer) == functools.partial:  # no need to use bias as BatchNorm2d has affine parameters
+        #     use_bias = norm_layer.func == nn.InstanceNorm2d
+        # else:
+        #     use_bias = norm_layer == nn.InstanceNorm2d
+        #
+        # kw = 4
+        # padw = 1
+        # sequence = [nn.Conv2d(input_nc, ndf, kernel_size=kw, stride=2, padding=padw), nn.LeakyReLU(0.2, True)]
+        # nf_mult = 1
+        # nf_mult_prev = 1
+        # for n in range(1, n_layers):  # gradually increase the number of filters
+        #     nf_mult_prev = nf_mult
+        #     nf_mult = min(2 ** n, 8)
+        #     if n==2:
+        #         sequence += [
+        #             nn.Conv2d(ndf * nf_mult_prev, ndf * nf_mult, kernel_size=kw, stride=2, padding=padw, bias=use_bias),
+        #             norm_layer(ndf * nf_mult),
+        #             CBAM(ndf * nf_mult),
+        #             nn.LeakyReLU(0.2, True)
+        #         ]
+        #     else:
+        #         sequence += [
+        #             nn.Conv2d(ndf * nf_mult_prev, ndf * nf_mult, kernel_size=kw, stride=2, padding=padw, bias=use_bias),
+        #             norm_layer(ndf * nf_mult),
+        #             CBAM(ndf * nf_mult),
+        #             nn.LeakyReLU(0.2, True)
+        #         ]
+        #
+        # nf_mult_prev = nf_mult
+        # nf_mult = min(2 ** n_layers, 8)
+        # sequence += [
+        #     nn.Conv2d(ndf * nf_mult_prev, ndf * nf_mult, kernel_size=kw, stride=1, padding=padw, bias=use_bias),
+        #     norm_layer(ndf * nf_mult),
+        #     nn.LeakyReLU(0.2, True)
+        # ]
+        #
+        # sequence += [nn.Conv2d(ndf * nf_mult, 1, kernel_size=kw, stride=1, padding=padw)]  # output 1 channel prediction map
+        # self.model = nn.Sequential(*sequence)
         super(NLayerDiscriminator, self).__init__()
-        if type(norm_layer) == functools.partial:  # no need to use bias as BatchNorm2d has affine parameters
-            use_bias = norm_layer.func == nn.InstanceNorm2d
-        else:
-            use_bias = norm_layer == nn.InstanceNorm2d
 
-        kw = 4
-        padw = 1
-        sequence = [nn.Conv2d(input_nc, ndf, kernel_size=kw, stride=2, padding=padw), nn.LeakyReLU(0.2, True)]
-        nf_mult = 1
-        nf_mult_prev = 1
-        for n in range(1, n_layers):  # gradually increase the number of filters
-            nf_mult_prev = nf_mult
-            nf_mult = min(2 ** n, 8)
-            if n==2:
-                sequence += [
-                    nn.Conv2d(ndf * nf_mult_prev, ndf * nf_mult, kernel_size=kw, stride=2, padding=padw, bias=use_bias),
-                    norm_layer(ndf * nf_mult),
-                    CBAM(ndf * nf_mult),
-                    nn.LeakyReLU(0.2, True)
-                ]
-            else:
-                sequence += [
-                    nn.Conv2d(ndf * nf_mult_prev, ndf * nf_mult, kernel_size=kw, stride=2, padding=padw, bias=use_bias),
-                    norm_layer(ndf * nf_mult),
-                    CBAM(ndf * nf_mult),
-                    nn.LeakyReLU(0.2, True)
-                ]
+        # A bunch of convolutions one after another
+        model = [nn.Conv2d(input_nc, 64, 4, stride=2, padding=1),
+                 nn.LeakyReLU(0.2, inplace=True)]
 
-        nf_mult_prev = nf_mult
-        nf_mult = min(2 ** n_layers, 8)
-        sequence += [
-            nn.Conv2d(ndf * nf_mult_prev, ndf * nf_mult, kernel_size=kw, stride=1, padding=padw, bias=use_bias),
-            norm_layer(ndf * nf_mult),
-            nn.LeakyReLU(0.2, True)
-        ]
+        model += [nn.Conv2d(64, 128, 4, stride=2, padding=1),
+                  nn.InstanceNorm2d(128),
+                  nn.LeakyReLU(0.2, inplace=True)]
 
-        sequence += [nn.Conv2d(ndf * nf_mult, 1, kernel_size=kw, stride=1, padding=padw)]  # output 1 channel prediction map
-        self.model = nn.Sequential(*sequence)
+        model += [nn.Conv2d(128, 256, 4, stride=2, padding=1),
+                  nn.InstanceNorm2d(256),
+                  nn.LeakyReLU(0.2, inplace=True)]
 
-    def forward(self, input):
-        """Standard forward."""
-        return self.model(input)
+        model += [nn.Conv2d(256, 512, 4, padding=1),
+                  nn.InstanceNorm2d(512),
+                  nn.LeakyReLU(0.2, inplace=True)]
+
+        # FCN classification layer
+        model += [nn.Conv2d(512, 1, 4, padding=1)]
+
+        self.model = nn.Sequential(*model)
+        self.fc = nn.Linear(100, 2)
+
+    # def forward(self, input):
+    #     """Standard forward."""
+    #     return self.model(input)
+
+    def forward(self, x):
+        x = self.model(x)
+        # Average pooling and flatten
+        # return nn.AvgPool2d(x, x.size()[2:]).view(x.size()[0], -1)
+        # x.view(x.size(0), -1) flatten tensor
+        return self.fc(x.view(x.size(0), -1))
 
 
 class PixelDiscriminator(nn.Module):
