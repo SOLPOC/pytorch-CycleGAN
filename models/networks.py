@@ -490,32 +490,73 @@ class UnetGenerator(nn.Module):
     """Create a Unet-based generator"""
 
     def __init__(self, input_nc, output_nc, num_downs, ngf=64, norm_layer=nn.BatchNorm2d, use_dropout=False):
-        """Construct a Unet generator
-        Parameters:
-            input_nc (int)  -- the number of channels in input images
-            output_nc (int) -- the number of channels in output images
-            num_downs (int) -- the number of downsamplings in UNet. For example, # if |num_downs| == 7,
-                                image of size 128x128 will become of size 1x1 # at the bottleneck
-            ngf (int)       -- the number of filters in the last conv layer
-            norm_layer      -- normalization layer
+        in_channels =3
+        out_channels=3
+        hid_channels=64
+        super().__init__()
+        self.downsampling_path = nn.Sequential(
+            Downsampling(in_channels, hid_channels, norm=False),  # 64x128x128
+            Downsampling(hid_channels, hid_channels * 2),  # 128x64x64
+            Downsampling(hid_channels * 2, hid_channels * 4),  # 256x32x32
+            Downsampling(hid_channels * 4, hid_channels * 8, attention=True),  # 512x16x16
+            Downsampling(hid_channels * 8, hid_channels * 8),  # 512x8x8
+            Downsampling(hid_channels * 8, hid_channels * 8),  # 512x4x4
+            Downsampling(hid_channels * 8, hid_channels * 8),  # 512x2x2
+            Downsampling(hid_channels * 8, hid_channels * 8, norm=False),  # 512x1x1, instance norm does not work on 1x1
+        )
+        self.upsampling_path = nn.Sequential(
+            Upsampling(hid_channels * 8, hid_channels * 8, dropout=True),  # (512+512)x2x2
+            Upsampling(hid_channels * 16, hid_channels * 8, dropout=True),  # (512+512)x4x4
+            Upsampling(hid_channels * 16, hid_channels * 8, dropout=True),  # (512+512)x8x8
+            Upsampling(hid_channels * 16, hid_channels * 8),  # (512+512)x16x16
+            Upsampling(hid_channels * 16, hid_channels * 4, attention=True),  # (256+256)x32x32
+            Upsampling(hid_channels * 8, hid_channels * 2),  # (128+128)x64x64
+            Upsampling(hid_channels * 4, hid_channels),  # (64+64)x128x128
+        )
+        self.feature_block = nn.Sequential(
+            nn.ConvTranspose2d(hid_channels * 2, out_channels,
+                               kernel_size=4, stride=2, padding=1),  # 3x256x256
+            nn.Tanh(),
+        )
 
-        We construct the U-Net from the innermost layer to the outermost layer.
-        It is a recursive process.
-        """
-        super(UnetGenerator, self).__init__()
-        # construct unet structure
-        unet_block = UnetSkipConnectionBlock(ngf * 8, ngf * 8, input_nc=None, submodule=None, norm_layer=norm_layer, innermost=True)  # add the innermost layer
-        for i in range(num_downs - 5):          # add intermediate layers with ngf * 8 filters
-            unet_block = UnetSkipConnectionBlock(ngf * 8, ngf * 8, input_nc=None, submodule=unet_block, norm_layer=norm_layer, use_dropout=use_dropout)
-        # gradually reduce the number of filters from ngf * 8 to ngf
-        unet_block = UnetSkipConnectionBlock(ngf * 4, ngf * 8, input_nc=None, submodule=unet_block, norm_layer=norm_layer)
-        unet_block = UnetSkipConnectionBlock(ngf * 2, ngf * 4, input_nc=None, submodule=unet_block, norm_layer=norm_layer)
-        unet_block = UnetSkipConnectionBlock(ngf, ngf * 2, input_nc=None, submodule=unet_block, norm_layer=norm_layer)
-        self.model = UnetSkipConnectionBlock(output_nc, ngf, input_nc=input_nc, submodule=unet_block, outermost=True, norm_layer=norm_layer)  # add the outermost layer
-
-    def forward(self, input):
-        """Standard forward"""
-        return self.model(input)
+    # def forward(self, x):
+    #     skips = []
+    #     for down in self.downsampling_path:
+    #         x = down(x)
+    #         skips.append(x)
+    #     skips = reversed(skips[:-1])
+    #
+    #     for up, skip in zip(self.upsampling_path, skips):
+    #         x = up(x)
+    #         x = torch.cat([x, skip], dim=1)
+    #     return self.feature_block(x)
+    # def __init__(self, input_nc, output_nc, num_downs, ngf=64, norm_layer=nn.BatchNorm2d, use_dropout=False):
+    #     """Construct a Unet generator
+    #     Parameters:
+    #         input_nc (int)  -- the number of channels in input images
+    #         output_nc (int) -- the number of channels in output images
+    #         num_downs (int) -- the number of downsamplings in UNet. For example, # if |num_downs| == 7,
+    #                             image of size 128x128 will become of size 1x1 # at the bottleneck
+    #         ngf (int)       -- the number of filters in the last conv layer
+    #         norm_layer      -- normalization layer
+    #
+    #     We construct the U-Net from the innermost layer to the outermost layer.
+    #     It is a recursive process.
+    #     """
+    #     super(UnetGenerator, self).__init__()
+    #     # construct unet structure
+    #     unet_block = UnetSkipConnectionBlock(ngf * 8, ngf * 8, input_nc=None, submodule=None, norm_layer=norm_layer, innermost=True)  # add the innermost layer
+    #     for i in range(num_downs - 5):          # add intermediate layers with ngf * 8 filters
+    #         unet_block = UnetSkipConnectionBlock(ngf * 8, ngf * 8, input_nc=None, submodule=unet_block, norm_layer=norm_layer, use_dropout=use_dropout)
+    #     # gradually reduce the number of filters from ngf * 8 to ngf
+    #     unet_block = UnetSkipConnectionBlock(ngf * 4, ngf * 8, input_nc=None, submodule=unet_block, norm_layer=norm_layer)
+    #     unet_block = UnetSkipConnectionBlock(ngf * 2, ngf * 4, input_nc=None, submodule=unet_block, norm_layer=norm_layer)
+    #     unet_block = UnetSkipConnectionBlock(ngf, ngf * 2, input_nc=None, submodule=unet_block, norm_layer=norm_layer)
+    #     self.model = UnetSkipConnectionBlock(output_nc, ngf, input_nc=input_nc, submodule=unet_block, outermost=True, norm_layer=norm_layer)  # add the outermost layer
+    #
+    # def forward(self, input):
+    #     """Standard forward"""
+    #     return self.model(input)
 
 
 class UnetSkipConnectionBlock(nn.Module):
@@ -600,6 +641,20 @@ class NLayerDiscriminator(nn.Module):
             n_layers (int)  -- the number of conv layers in the discriminator
             norm_layer      -- normalization layer
         """
+
+        in_channels=3
+        super().__init__()
+        hid_channels=64
+        self.block = nn.Sequential(
+            Downsampling(in_channels, hid_channels, norm=False),  # 64x128x128
+            Downsampling(hid_channels, hid_channels * 2),  # 128x64x64
+            Downsampling(hid_channels * 2, hid_channels * 4),  # 256x32x32
+            Downsampling(hid_channels * 4, hid_channels * 8, stride=1),  # 512x31x31
+            nn.Conv2d(hid_channels * 8, 1, kernel_size=4, padding=1),  # 1x30x30
+        )
+
+        def forward(self, x):
+            return self.block(x)
         # super(NLayerDiscriminator, self).__init__()
         # if type(norm_layer) == functools.partial:  # no need to use bias as BatchNorm2d has affine parameters
         #     use_bias = norm_layer.func == nn.InstanceNorm2d
@@ -639,40 +694,10 @@ class NLayerDiscriminator(nn.Module):
         #
         # sequence += [nn.Conv2d(ndf * nf_mult, 1, kernel_size=kw, stride=1, padding=padw)]  # output 1 channel prediction map
         # self.model = nn.Sequential(*sequence)
-        super(NLayerDiscriminator, self).__init__()
 
-        # A bunch of convolutions one after another
-        model = [nn.Conv2d(input_nc, 64, 4, stride=2, padding=1),
-                 nn.LeakyReLU(0.2, inplace=True)]
-
-        model += [nn.Conv2d(64, 128, 4, stride=2, padding=1),
-                  nn.InstanceNorm2d(128),
-                  nn.LeakyReLU(0.2, inplace=True)]
-
-        model += [nn.Conv2d(128, 256, 4, stride=2, padding=1),
-                  nn.InstanceNorm2d(256),
-                  nn.LeakyReLU(0.2, inplace=True)]
-
-        model += [nn.Conv2d(256, 512, 4, padding=1),
-                  nn.InstanceNorm2d(512),
-                  nn.LeakyReLU(0.2, inplace=True)]
-
-        # FCN classification layer
-        model += [nn.Conv2d(512, 1, 4, padding=1)]
-
-        self.model = nn.Sequential(*model)
-        self.fc = nn.Linear(100, 2)
-
-    # def forward(self, input):
-    #     """Standard forward."""
-    #     return self.model(input)
-
-    def forward(self, x):
-        x = self.model(x)
-        # Average pooling and flatten
-        # return nn.AvgPool2d(x, x.size()[2:]).view(x.size()[0], -1)
-        # x.view(x.size(0), -1) flatten tensor
-        return self.fc(x.view(x.size(0), -1))
+    def forward(self, input):
+        """Standard forward."""
+        return self.model(input)
 
 
 class PixelDiscriminator(nn.Module):
@@ -705,3 +730,162 @@ class PixelDiscriminator(nn.Module):
     def forward(self, input):
         """Standard forward."""
         return self.net(input)
+
+import torch
+from torch.autograd import Variable
+import torch.nn.functional as F
+from torch import nn
+from torch import Tensor
+from torch.nn import Parameter
+import glob
+import os
+import shutil
+
+class SpectralNorm(nn.Module):
+    def __init__(self, module, name='weight', power_iterations=1):
+        super(SpectralNorm, self).__init__()
+        self.module = module
+        self.name = name
+        self.power_iterations = power_iterations
+        if not self._made_params():
+            self._make_params()
+
+    def _update_u_v(self):
+        u = getattr(self.module, self.name + "_u")
+        v = getattr(self.module, self.name + "_v")
+        w = getattr(self.module, self.name + "_bar")
+
+        height = w.data.shape[0]
+        for _ in range(self.power_iterations):
+            v.data = l2normalize(torch.mv(torch.t(w.view(height,-1).data), u.data))
+            u.data = l2normalize(torch.mv(w.view(height,-1).data, v.data))
+
+        # sigma = torch.dot(u.data, torch.mv(w.view(height,-1).data, v.data))
+        sigma = u.dot(w.view(height, -1).mv(v))
+        setattr(self.module, self.name, w / sigma.expand_as(w))
+
+    def _made_params(self):
+        try:
+            u = getattr(self.module, self.name + "_u")
+            v = getattr(self.module, self.name + "_v")
+            w = getattr(self.module, self.name + "_bar")
+            return True
+        except AttributeError:
+            return False
+
+
+    def _make_params(self):
+        w = getattr(self.module, self.name)
+
+        height = w.data.shape[0]
+        width = w.view(height, -1).data.shape[1]
+
+        u = Parameter(w.data.new(height).normal_(0, 1), requires_grad=False)
+        v = Parameter(w.data.new(width).normal_(0, 1), requires_grad=False)
+        u.data = l2normalize(u.data)
+        v.data = l2normalize(v.data)
+        w_bar = Parameter(w.data)
+
+        del self.module._parameters[self.name]
+
+        self.module.register_parameter(self.name + "_u", u)
+        self.module.register_parameter(self.name + "_v", v)
+        self.module.register_parameter(self.name + "_bar", w_bar)
+
+
+    def forward(self, *args):
+        self._update_u_v()
+        return self.module.forward(*args)
+
+class Self_Attn(nn.Module):
+    """ Self attention Layer"""
+    def __init__(self,in_dim,activation):
+        super(Self_Attn,self).__init__()
+        self.chanel_in = in_dim
+        self.activation = activation
+
+        self.query_conv = nn.Conv2d(in_channels = in_dim , out_channels = in_dim//8 , kernel_size= 1)
+        self.key_conv = nn.Conv2d(in_channels = in_dim , out_channels = in_dim//8 , kernel_size= 1)
+        self.value_conv = nn.Conv2d(in_channels = in_dim , out_channels = in_dim , kernel_size= 1)
+        self.gamma = nn.Parameter(torch.zeros(1))
+
+        self.softmax  = nn.Softmax(dim=-1) #
+    def forward(self,x):
+        """
+            inputs :
+                x : input feature maps( B X C X W X H)
+            returns :
+                out : self attention value + input feature
+                attention: B X N X N (N is Width*Height)
+        """
+        m_batchsize,C,width ,height = x.size()
+        proj_query  = self.query_conv(x).view(m_batchsize,-1,width*height).permute(0,2,1) # B X CX(N)
+        proj_key =  self.key_conv(x).view(m_batchsize,-1,width*height) # B X C x (*W*H)
+        energy =  torch.bmm(proj_query,proj_key) # transpose check
+        attention = self.softmax(energy) # BX (N) X (N)
+        proj_value = self.value_conv(x).view(m_batchsize,-1,width*height) # B X C X N
+
+        out = torch.bmm(proj_value,attention.permute(0,2,1) )
+        out = out.view(m_batchsize,C,width,height)
+
+        out = self.gamma*out + x
+        return out
+
+"""***Lets Define Our Cycle GAN***"""
+
+class Downsampling(nn.Module):
+    def __init__(
+        self,
+        in_channels,
+        out_channels,
+        kernel_size=4,
+        stride=2,
+        padding=1,
+        norm=True,
+        attention = False
+    ):
+        super().__init__()
+        self.block = nn.Sequential()
+        if attention:
+            self.block.append(Self_Attn(in_channels,'relu'))
+        self.block.append(nn.Conv2d(in_channels,out_channels,kernel_size = kernel_size,stride=stride,padding = padding,bias= not norm))
+        if norm:
+            self.block.append(nn.InstanceNorm2d(out_channels,affine = True))
+        self.block.append(nn.LeakyReLU(0.3))
+
+
+    def forward(self,x):
+        return self.block(x)
+
+class Upsampling(nn.Module):
+    def __init__(
+        self,
+        in_channels,
+        out_channels,
+        kernel_size=4,
+        stride=2,
+        padding=1,
+        output_padding=0,
+        dropout=False,
+        attention = False
+    ):
+        super().__init__()
+        self.block = nn.Sequential(
+            nn.ConvTranspose2d(in_channels, out_channels, kernel_size=kernel_size, stride=stride,
+                               padding=padding, output_padding=output_padding, bias=False),
+            nn.InstanceNorm2d(out_channels, affine=True),
+        )
+        if dropout:
+            self.block.append(nn.Dropout(0.5))
+        self.block.append(nn.ReLU())
+        if attention:
+            self.block.append(Self_Attn(out_channels,'relu'))
+
+
+
+
+    def forward(self, x):
+        return self.block(x)
+
+def l2normalize(v, eps=1e-12):
+    return v / (v.norm() + eps)
