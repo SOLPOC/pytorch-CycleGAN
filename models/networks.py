@@ -3,61 +3,30 @@ import torch.nn as nn
 from torch.nn import init
 import functools
 from torch.optim import lr_scheduler
-from torch.nn import Flatten
+
+import torch
+from torch import nn
+from torch.nn import Parameter
+import glob
+import os
+import shutil
+
+import matplotlib.pyplot as plt
+import numpy as np
+import pytorch_lightning as L
+import torch
 import torch.nn.functional as F
-from .MyUnet import Unet2
+import torchvision.transforms as T
+from pytorch_lightning.trainer.supporters import CombinedLoader
+from torch import nn
+from torch.utils.data import DataLoader, Dataset
+from torchvision.io import read_image
+from torchvision.utils import make_grid, save_image
 
 
 ###############################################################################
 # Helper Functions
 ###############################################################################
-class CBAM(nn.Module):
-    def __init__(self, in_channel, reduction_ratio=16):
-        super(CBAM, self).__init__()
-        self.channelFilter = ChannelFilter(in_channel, reduction_ratio)
-        self.spatialFilter = SpatialFilter()
-
-    def forward(self, x):
-        x_out = self.channelFilter(x)
-        x_out = self.spatialFilter(x_out)
-
-        return x_out
-
-
-class ChannelFilter(nn.Module):
-    def __init__(self, in_channel, reduction_ratio):
-        super(ChannelFilter, self).__init__()
-        self.in_channel = in_channel
-        self.mlp = nn.Sequential(
-            Flatten(),
-            nn.Linear(in_channel, in_channel // reduction_ratio),
-            nn.ReLU(),
-            nn.Linear(in_channel // reduction_ratio, in_channel)
-        )
-
-    def forward(self, x):
-        avg_pool = F.avg_pool2d(x, (x.size(2), x.size(3)), stride=(x.size(2), x.size(3)))
-        max_pool = F.max_pool2d(x, (x.size(2), x.size(3)), stride=(x.size(2), x.size(3)))
-        channel_attention = torch.sigmoid(self.mlp(avg_pool) + self.mlp(max_pool)).unsqueeze(2).unsqueeze(3).expand_as(
-            x)
-
-        return channel_attention * x
-
-
-class SpatialFilter(nn.Module):
-    def __init__(self, kernel_size=7):
-        super(SpatialFilter, self).__init__()
-        self.conv = nn.Conv2d(2, 1, kernel_size, stride=1, padding=(kernel_size - 1) // 2, bias=False)
-        self.batch_norm = nn.BatchNorm2d(1, eps=1e-5, momentum=0.01, affine=True)
-        self.relu = nn.ReLU()
-
-    def forward(self, x):
-        # 通道滤波
-        x_filtered = torch.cat((torch.max(x, 1)[0].unsqueeze(1), torch.mean(x, 1).unsqueeze(1)), dim=1)
-        x_filtered = self.relu(self.batch_norm(self.conv(x_filtered)))
-        spatial_attention = torch.sigmoid(x_filtered)
-
-        return spatial_attention * x
 
 
 class Identity(nn.Module):
@@ -204,9 +173,9 @@ def define_G(input_nc, output_nc, ngf, netG, norm='batch', use_dropout=False, in
     elif netG == 'unet_128':
         net = UnetGenerator(input_nc, output_nc, 7, ngf, norm_layer=norm_layer, use_dropout=use_dropout)
     elif netG == 'unet_256':
-        # net = UnetGenerator(input_nc, output_nc, 8, ngf, norm_layer=norm_layer, use_dropout=use_dropout)
-        # net = SA_Unet.AttU_Net(input_nc, output_nc)
-        net = Unet2(3,3)
+        net = UnetGenerator(input_nc, output_nc, 8, ngf, norm_layer=norm_layer, use_dropout=use_dropout)
+    elif netG == 'saunet_256':
+        net = SAUnetGenerator(3,3,64)
     else:
         raise NotImplementedError('Generator model name [%s] is not recognized' % netG)
     return init_net(net, init_type, init_gain, gpu_ids)
@@ -251,6 +220,8 @@ def define_D(input_nc, ndf, netD, n_layers_D=3, norm='batch', init_type='normal'
         net = NLayerDiscriminator(input_nc, ndf, n_layers_D, norm_layer=norm_layer)
     elif netD == 'pixel':     # classify if each pixel is real or fake
         net = PixelDiscriminator(input_nc, ndf, norm_layer=norm_layer)
+    elif netD == 'saunet':
+        net = UnetDiscriminator(3,64)
     else:
         raise NotImplementedError('Discriminator model name [%s] is not recognized' % netD)
     return init_net(net, init_type, init_gain, gpu_ids)
@@ -490,73 +461,32 @@ class UnetGenerator(nn.Module):
     """Create a Unet-based generator"""
 
     def __init__(self, input_nc, output_nc, num_downs, ngf=64, norm_layer=nn.BatchNorm2d, use_dropout=False):
-        in_channels =3
-        out_channels=3
-        hid_channels=64
-        super().__init__()
-        self.downsampling_path = nn.Sequential(
-            Downsampling(in_channels, hid_channels, norm=False),  # 64x128x128
-            Downsampling(hid_channels, hid_channels * 2),  # 128x64x64
-            Downsampling(hid_channels * 2, hid_channels * 4),  # 256x32x32
-            Downsampling(hid_channels * 4, hid_channels * 8, attention=True),  # 512x16x16
-            Downsampling(hid_channels * 8, hid_channels * 8),  # 512x8x8
-            Downsampling(hid_channels * 8, hid_channels * 8),  # 512x4x4
-            Downsampling(hid_channels * 8, hid_channels * 8),  # 512x2x2
-            Downsampling(hid_channels * 8, hid_channels * 8, norm=False),  # 512x1x1, instance norm does not work on 1x1
-        )
-        self.upsampling_path = nn.Sequential(
-            Upsampling(hid_channels * 8, hid_channels * 8, dropout=True),  # (512+512)x2x2
-            Upsampling(hid_channels * 16, hid_channels * 8, dropout=True),  # (512+512)x4x4
-            Upsampling(hid_channels * 16, hid_channels * 8, dropout=True),  # (512+512)x8x8
-            Upsampling(hid_channels * 16, hid_channels * 8),  # (512+512)x16x16
-            Upsampling(hid_channels * 16, hid_channels * 4, attention=True),  # (256+256)x32x32
-            Upsampling(hid_channels * 8, hid_channels * 2),  # (128+128)x64x64
-            Upsampling(hid_channels * 4, hid_channels),  # (64+64)x128x128
-        )
-        self.feature_block = nn.Sequential(
-            nn.ConvTranspose2d(hid_channels * 2, out_channels,
-                               kernel_size=4, stride=2, padding=1),  # 3x256x256
-            nn.Tanh(),
-        )
+        """Construct a Unet generator
+        Parameters:
+            input_nc (int)  -- the number of channels in input images
+            output_nc (int) -- the number of channels in output images
+            num_downs (int) -- the number of downsamplings in UNet. For example, # if |num_downs| == 7,
+                                image of size 128x128 will become of size 1x1 # at the bottleneck
+            ngf (int)       -- the number of filters in the last conv layer
+            norm_layer      -- normalization layer
 
-    # def forward(self, x):
-    #     skips = []
-    #     for down in self.downsampling_path:
-    #         x = down(x)
-    #         skips.append(x)
-    #     skips = reversed(skips[:-1])
-    #
-    #     for up, skip in zip(self.upsampling_path, skips):
-    #         x = up(x)
-    #         x = torch.cat([x, skip], dim=1)
-    #     return self.feature_block(x)
-    # def __init__(self, input_nc, output_nc, num_downs, ngf=64, norm_layer=nn.BatchNorm2d, use_dropout=False):
-    #     """Construct a Unet generator
-    #     Parameters:
-    #         input_nc (int)  -- the number of channels in input images
-    #         output_nc (int) -- the number of channels in output images
-    #         num_downs (int) -- the number of downsamplings in UNet. For example, # if |num_downs| == 7,
-    #                             image of size 128x128 will become of size 1x1 # at the bottleneck
-    #         ngf (int)       -- the number of filters in the last conv layer
-    #         norm_layer      -- normalization layer
-    #
-    #     We construct the U-Net from the innermost layer to the outermost layer.
-    #     It is a recursive process.
-    #     """
-    #     super(UnetGenerator, self).__init__()
-    #     # construct unet structure
-    #     unet_block = UnetSkipConnectionBlock(ngf * 8, ngf * 8, input_nc=None, submodule=None, norm_layer=norm_layer, innermost=True)  # add the innermost layer
-    #     for i in range(num_downs - 5):          # add intermediate layers with ngf * 8 filters
-    #         unet_block = UnetSkipConnectionBlock(ngf * 8, ngf * 8, input_nc=None, submodule=unet_block, norm_layer=norm_layer, use_dropout=use_dropout)
-    #     # gradually reduce the number of filters from ngf * 8 to ngf
-    #     unet_block = UnetSkipConnectionBlock(ngf * 4, ngf * 8, input_nc=None, submodule=unet_block, norm_layer=norm_layer)
-    #     unet_block = UnetSkipConnectionBlock(ngf * 2, ngf * 4, input_nc=None, submodule=unet_block, norm_layer=norm_layer)
-    #     unet_block = UnetSkipConnectionBlock(ngf, ngf * 2, input_nc=None, submodule=unet_block, norm_layer=norm_layer)
-    #     self.model = UnetSkipConnectionBlock(output_nc, ngf, input_nc=input_nc, submodule=unet_block, outermost=True, norm_layer=norm_layer)  # add the outermost layer
-    #
-    # def forward(self, input):
-    #     """Standard forward"""
-    #     return self.model(input)
+        We construct the U-Net from the innermost layer to the outermost layer.
+        It is a recursive process.
+        """
+        super(UnetGenerator, self).__init__()
+        # construct unet structure
+        unet_block = UnetSkipConnectionBlock(ngf * 8, ngf * 8, input_nc=None, submodule=None, norm_layer=norm_layer, innermost=True)  # add the innermost layer
+        for i in range(num_downs - 5):          # add intermediate layers with ngf * 8 filters
+            unet_block = UnetSkipConnectionBlock(ngf * 8, ngf * 8, input_nc=None, submodule=unet_block, norm_layer=norm_layer, use_dropout=use_dropout)
+        # gradually reduce the number of filters from ngf * 8 to ngf
+        unet_block = UnetSkipConnectionBlock(ngf * 4, ngf * 8, input_nc=None, submodule=unet_block, norm_layer=norm_layer)
+        unet_block = UnetSkipConnectionBlock(ngf * 2, ngf * 4, input_nc=None, submodule=unet_block, norm_layer=norm_layer)
+        unet_block = UnetSkipConnectionBlock(ngf, ngf * 2, input_nc=None, submodule=unet_block, norm_layer=norm_layer)
+        self.model = UnetSkipConnectionBlock(output_nc, ngf, input_nc=input_nc, submodule=unet_block, outermost=True, norm_layer=norm_layer)  # add the outermost layer
+
+    def forward(self, input):
+        """Standard forward"""
+        return self.model(input)
 
 
 class UnetSkipConnectionBlock(nn.Module):
@@ -607,13 +537,13 @@ class UnetSkipConnectionBlock(nn.Module):
                                         padding=1, bias=use_bias)
             down = [downrelu, downconv]
             up = [uprelu, upconv, upnorm]
-            model = down+up+[CBAM(inner_nc)]
+            model = down + up
         else:
             upconv = nn.ConvTranspose2d(inner_nc * 2, outer_nc,
                                         kernel_size=4, stride=2,
                                         padding=1, bias=use_bias)
             down = [downrelu, downconv, downnorm]
-            up = [uprelu, upconv, upnorm]+[CBAM(outer_nc)]
+            up = [uprelu, upconv, upnorm]
 
             if use_dropout:
                 model = down + [submodule] + up + [nn.Dropout(0.5)]
@@ -641,59 +571,36 @@ class NLayerDiscriminator(nn.Module):
             n_layers (int)  -- the number of conv layers in the discriminator
             norm_layer      -- normalization layer
         """
+        super(NLayerDiscriminator, self).__init__()
+        if type(norm_layer) == functools.partial:  # no need to use bias as BatchNorm2d has affine parameters
+            use_bias = norm_layer.func == nn.InstanceNorm2d
+        else:
+            use_bias = norm_layer == nn.InstanceNorm2d
 
-        in_channels=3
-        super().__init__()
-        hid_channels=64
-        self.block = nn.Sequential(
-            Downsampling(in_channels, hid_channels, norm=False),  # 64x128x128
-            Downsampling(hid_channels, hid_channels * 2),  # 128x64x64
-            Downsampling(hid_channels * 2, hid_channels * 4),  # 256x32x32
-            Downsampling(hid_channels * 4, hid_channels * 8, stride=1),  # 512x31x31
-            nn.Conv2d(hid_channels * 8, 1, kernel_size=4, padding=1),  # 1x30x30
-        )
+        kw = 4
+        padw = 1
+        sequence = [nn.Conv2d(input_nc, ndf, kernel_size=kw, stride=2, padding=padw), nn.LeakyReLU(0.2, True)]
+        nf_mult = 1
+        nf_mult_prev = 1
+        for n in range(1, n_layers):  # gradually increase the number of filters
+            nf_mult_prev = nf_mult
+            nf_mult = min(2 ** n, 8)
+            sequence += [
+                nn.Conv2d(ndf * nf_mult_prev, ndf * nf_mult, kernel_size=kw, stride=2, padding=padw, bias=use_bias),
+                norm_layer(ndf * nf_mult),
+                nn.LeakyReLU(0.2, True)
+            ]
 
-        def forward(self, x):
-            return self.block(x)
-        # super(NLayerDiscriminator, self).__init__()
-        # if type(norm_layer) == functools.partial:  # no need to use bias as BatchNorm2d has affine parameters
-        #     use_bias = norm_layer.func == nn.InstanceNorm2d
-        # else:
-        #     use_bias = norm_layer == nn.InstanceNorm2d
-        #
-        # kw = 4
-        # padw = 1
-        # sequence = [nn.Conv2d(input_nc, ndf, kernel_size=kw, stride=2, padding=padw), nn.LeakyReLU(0.2, True)]
-        # nf_mult = 1
-        # nf_mult_prev = 1
-        # for n in range(1, n_layers):  # gradually increase the number of filters
-        #     nf_mult_prev = nf_mult
-        #     nf_mult = min(2 ** n, 8)
-        #     if n==2:
-        #         sequence += [
-        #             nn.Conv2d(ndf * nf_mult_prev, ndf * nf_mult, kernel_size=kw, stride=2, padding=padw, bias=use_bias),
-        #             norm_layer(ndf * nf_mult),
-        #             CBAM(ndf * nf_mult),
-        #             nn.LeakyReLU(0.2, True)
-        #         ]
-        #     else:
-        #         sequence += [
-        #             nn.Conv2d(ndf * nf_mult_prev, ndf * nf_mult, kernel_size=kw, stride=2, padding=padw, bias=use_bias),
-        #             norm_layer(ndf * nf_mult),
-        #             CBAM(ndf * nf_mult),
-        #             nn.LeakyReLU(0.2, True)
-        #         ]
-        #
-        # nf_mult_prev = nf_mult
-        # nf_mult = min(2 ** n_layers, 8)
-        # sequence += [
-        #     nn.Conv2d(ndf * nf_mult_prev, ndf * nf_mult, kernel_size=kw, stride=1, padding=padw, bias=use_bias),
-        #     norm_layer(ndf * nf_mult),
-        #     nn.LeakyReLU(0.2, True)
-        # ]
-        #
-        # sequence += [nn.Conv2d(ndf * nf_mult, 1, kernel_size=kw, stride=1, padding=padw)]  # output 1 channel prediction map
-        # self.model = nn.Sequential(*sequence)
+        nf_mult_prev = nf_mult
+        nf_mult = min(2 ** n_layers, 8)
+        sequence += [
+            nn.Conv2d(ndf * nf_mult_prev, ndf * nf_mult, kernel_size=kw, stride=1, padding=padw, bias=use_bias),
+            norm_layer(ndf * nf_mult),
+            nn.LeakyReLU(0.2, True)
+        ]
+
+        sequence += [nn.Conv2d(ndf * nf_mult, 1, kernel_size=kw, stride=1, padding=padw)]  # output 1 channel prediction map
+        self.model = nn.Sequential(*sequence)
 
     def forward(self, input):
         """Standard forward."""
@@ -731,15 +638,9 @@ class PixelDiscriminator(nn.Module):
         """Standard forward."""
         return self.net(input)
 
-import torch
-from torch.autograd import Variable
-import torch.nn.functional as F
-from torch import nn
-from torch import Tensor
-from torch.nn import Parameter
-import glob
-import os
-import shutil
+def l2normalize(v, eps=1e-12):
+    return v / (v.norm() + eps)
+
 
 class SpectralNorm(nn.Module):
     def __init__(self, module, name='weight', power_iterations=1):
@@ -831,8 +732,6 @@ class Self_Attn(nn.Module):
         out = self.gamma*out + x
         return out
 
-"""***Lets Define Our Cycle GAN***"""
-
 class Downsampling(nn.Module):
     def __init__(
         self,
@@ -887,5 +786,56 @@ class Upsampling(nn.Module):
     def forward(self, x):
         return self.block(x)
 
-def l2normalize(v, eps=1e-12):
-    return v / (v.norm() + eps)
+class SAUnetGenerator(nn.Module):
+    def __init__(self, in_channels, out_channels, hid_channels):
+        super().__init__()
+        self.downsampling_path = nn.Sequential(
+            Downsampling(in_channels, hid_channels, norm=False), # 64x128x128
+            Downsampling(hid_channels, hid_channels*2), # 128x64x64
+            Downsampling(hid_channels*2, hid_channels*4), # 256x32x32
+            Downsampling(hid_channels*4, hid_channels*8,attention=True), # 512x16x16
+            Downsampling(hid_channels*8, hid_channels*8), # 512x8x8
+            Downsampling(hid_channels*8, hid_channels*8), # 512x4x4
+            Downsampling(hid_channels*8, hid_channels*8), # 512x2x2
+            Downsampling(hid_channels*8, hid_channels*8, norm=False), # 512x1x1, instance norm does not work on 1x1
+        )
+        self.upsampling_path = nn.Sequential(
+            Upsampling(hid_channels*8, hid_channels*8, dropout=True), # (512+512)x2x2
+            Upsampling(hid_channels*16, hid_channels*8, dropout=True), # (512+512)x4x4
+            Upsampling(hid_channels*16, hid_channels*8, dropout=True), # (512+512)x8x8
+            Upsampling(hid_channels*16, hid_channels*8), # (512+512)x16x16
+            Upsampling(hid_channels*16, hid_channels*4,attention=True), # (256+256)x32x32
+            Upsampling(hid_channels*8, hid_channels*2), # (128+128)x64x64
+            Upsampling(hid_channels*4, hid_channels), # (64+64)x128x128
+        )
+        self.feature_block = nn.Sequential(
+            nn.ConvTranspose2d(hid_channels*2, out_channels,
+                               kernel_size=4, stride=2, padding=1), # 3x256x256
+            nn.Tanh(),
+        )
+
+    def forward(self, x):
+        skips = []
+        for down in self.downsampling_path:
+            x = down(x)
+            skips.append(x)
+        skips = reversed(skips[:-1])
+
+        for up, skip in zip(self.upsampling_path, skips):
+            x = up(x)
+            x = torch.cat([x, skip], dim=1)
+        return self.feature_block(x)
+
+class UnetDiscriminator(nn.Module):
+    def __init__(self, in_channels, hid_channels):
+        super().__init__()
+        self.block = nn.Sequential(
+            Downsampling(in_channels, hid_channels, norm=False), # 64x128x128
+            Downsampling(hid_channels, hid_channels*2), # 128x64x64
+            Downsampling(hid_channels*2, hid_channels*4), # 256x32x32
+            Downsampling(hid_channels*4, hid_channels*8, stride=1), # 512x31x31
+            nn.Conv2d(hid_channels*8, 1, kernel_size=4, padding=1), # 1x30x30
+        )
+
+    def forward(self, x):
+        return self.block(x)
