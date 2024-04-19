@@ -33,6 +33,9 @@ from models import create_model
 from util.visualizer import save_images
 from util import html
 
+from models.networks import *
+from models.networks import SAUnetGenerator as Generator
+
 try:
     import wandb
 except ImportError:
@@ -89,3 +92,6 @@ if __name__ == '__main__':
 
 # --dataroot datasets/vangogh2photo/testA --name painting_resnet --model test --no_dropout
 # --dataroot datasets/vangogh2photo/testA --name painting_unet --model test --no_dropout --netG unet_256
+# --dataroot datasets/vangogh2photo/testA --name painting_unet_pixel --model test --no_dropout --netG unet_256 --netD pixel
+# --dataroot datasets/vangogh2photo/testA --name painting_saunet --model test --no_dropout --netG saunet_256 --netD saunet
+# --dataroot datasets/vangogh2photo/testA --name painting_saunet_old --model test --no_dropout --netG saunet_256 --netD saunet
