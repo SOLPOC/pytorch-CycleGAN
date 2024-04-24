@@ -165,10 +165,12 @@ class SpectralNorm(nn.Module):
         w = getattr(self.module, self.name + "_bar")
 
         height = w.data.shape[0]
+        # for _ in range(self.power_iterations):
+        #     v.data = l2normalize(torch.mv(torch.t(w.view(height,-1).data), u.data))
+        #     u.data = l2normalize(torch.mv(w.view(height,-1).data, v.data))
         for _ in range(self.power_iterations):
-            v.data = l2normalize(torch.mv(torch.t(w.view(height,-1).data), u.data))
-            u.data = l2normalize(torch.mv(w.view(height,-1).data, v.data))
-
+            v.data = l2normalize(torch.mv(torch.t(w.view(height,-1).data.float()), u.data.float()))
+            u.data = l2normalize(torch.mv(w.view(height,-1).data.float(), v.data.float()))
         # sigma = torch.dot(u.data, torch.mv(w.view(height,-1).data, v.data))
         sigma = u.dot(w.view(height, -1).mv(v))
         setattr(self.module, self.name, w / sigma.expand_as(w))
