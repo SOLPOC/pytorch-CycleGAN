@@ -90,9 +90,9 @@ if __name__ == '__main__':
 # --dataroot datasets/shuimo/testA --name shuimo_resnet --model test --no_dropout
 # --dataroot datasets/shuimo/testA --name shuimo_unet --model test --no_dropout --netG unet_256
 
-# --dataroot datasets/vangogh2photo/testA --name painting_resnet --model test --no_dropout
-# --dataroot datasets/vangogh2photo/testA --name painting_unet --model test --no_dropout --netG unet_256
-# --dataroot datasets/vangogh2photo/testA --name painting_unet_sp --model test --no_dropout --netG unet_256
+# --dataroot datasets/vangogh2photo/testA --name painting_resnet_b2a --model test --no_dropout
+# --dataroot datasets/vangogh2photo/testA --name painting_unet_b2a --model test --no_dropout --netG unet_256
+# --dataroot datasets/vangogh2photo/testA --name painting_unet_sp_b2a --model test --no_dropout --netG unet_256
 # --dataroot datasets/vangogh2photo/testA --name painting_unet_pixel --model test --no_dropout --netG unet_256 --netD pixel
-# --dataroot datasets/vangogh2photo/testA --name painting_saunet --model test --no_dropout --netG saunet_256 --netD saunet
+# --dataroot datasets/vangogh2photo/testA --name painting_saunet_b2a --model test --no_dropout --netG saunet_256 --netD saunet
 # --dataroot datasets/vangogh2photo/testA --name painting_saunet_old --model test --no_dropout --netG saunet_256 --netD saunet
