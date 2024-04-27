@@ -160,8 +160,9 @@ if __name__ == "__main__":
     # value("shuimo_resnet","shuimo",transform=True,dircetion="both")
     # value("map_resnet", "maps", transform=True)
     # value("map_unet", "maps", transform=True)
-    value("painting_resnet", "vangogh2photo", transform=True)
+    # value("painting_resnet", "vangogh2photo", transform=True)
     # value("painting_unet", "vangogh2photo", transform=True)
+    value("painting_unet_sp", "vangogh2photo", transform=True)
     # value("painting_saunet", "vangogh2photo", transform=True)
     # value("painting_saunet_old", "vangogh2photo", transform=True)
 

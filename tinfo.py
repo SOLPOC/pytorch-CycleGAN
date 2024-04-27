@@ -18,7 +18,7 @@ def load_model(model_path):
     return model
 
 print_model()
-# model = load_model("checkpoints/painting_saunet_old/latest_net_G.pth")
+# model = load_model("checkpoints/painting_saunet_old/test.pth")
 # summary(unet, (1, 3, 224, 224)) # 1：batch_size 3:图片的通道数 224: 图片的高宽
 # if __name__ == '__main__':
 #     print_model()
