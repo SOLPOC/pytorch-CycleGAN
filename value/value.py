@@ -188,8 +188,11 @@ if __name__ == "__main__":
     # value("shuimo_resnet","shuimo",transform=True,dircetion="both")
     # value("map_resnet", "maps", transform=True)
     # value("map_unet", "maps", transform=True)
-    value("painting_resnet_b2a", "vangogh2photo", transform=True,direction="b2a")
-    value("painting_unet_b2a", "vangogh2photo", transform=True,direction="b2a")
+    # value("painting_resnet_b2a", "vangogh2photo", transform=True,direction="b2a")
+    # value("painting_unet_b2a", "vangogh2photo", transform=True,direction="b2a")
+    # value("painting_saunet_b2a", "vangogh2photo", transform=True,direction="b2a")
+    value("painting_resnet_a2b", "vangogh2photo", transform=True,direction="b2a")
+    # value("painting_unet_a2b", "vangogh2photo", transform=True,direction="b2a")
     value("painting_saunet_b2a", "vangogh2photo", transform=True,direction="b2a")
     # value("painting_unet_sp_b2a", "vangogh2photo", transform=True,direction="b2a")
 
