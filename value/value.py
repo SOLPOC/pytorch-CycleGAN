@@ -4,8 +4,8 @@ import shutil
 import torchvision.transforms as transforms
 from PIL import Image
 import re
-from psnr import get_mean_PSNR
-from ssim import get_mean_SSIM
+from psnr import get_psnr
+from ssim import get_ssim
 
 def split(folder_path,direction="b2a"):
     """
@@ -155,19 +155,19 @@ def value(results_dir,datasets_dir,transform=False,direction="b2a"):
     FID=float(str(matches[0]))
 
     if direction=="a2b":
-        real_dir="../results/"+results_dir+"/test_latest/images/B_real"
-        fake_dir="../results/"+results_dir+"/test_latest/images/B_fake"
+        dir1="../results/"+results_dir+"/test_latest/images/A_real"
+        dir2="../results/"+results_dir+"/test_latest/images/B_fake"
     else:
-        real_dir = "../results/" + results_dir + "/test_latest/images/A_real"
-        fake_dir = "../results/" + results_dir + "/test_latest/images/A_fake"
+        dir1 = "../results/" + results_dir + "/test_latest/images/B_real"
+        dir2 = "../results/" + results_dir + "/test_latest/images/A_fake"
 
     # PSNR计算方式：B_real和B_fake文件夹随机图片之间计算psnr并取平均值，重复以上过程取平均值
     print("Calculate PSNR score...")
-    PSNR=round(get_mean_PSNR(fake_dir,real_dir,1),4)
+    PSNR=get_psnr(dir1,dir2)
 
     # SSIM计算方式：B_real和B_fake文件夹随机图片之间计算ssim并取平均值，重复以上过程取平均值
     print("Calculate SSIM score...")
-    SSIM=get_mean_SSIM(fake_dir,real_dir,1)
+    SSIM=get_ssim(dir1,dir2)
 
     crossline()
     print("FID : "+str(round(FID,4)))
@@ -191,11 +191,12 @@ if __name__ == "__main__":
     # value("painting_resnet_b2a", "vangogh2photo", transform=True,direction="b2a")
     # value("painting_unet_b2a", "vangogh2photo", transform=True,direction="b2a")
     # value("painting_saunet_b2a", "vangogh2photo", transform=True,direction="b2a")
-    value("painting_resnet_a2b", "vangogh2photo", transform=True,direction="b2a")
-    # value("painting_unet_a2b", "vangogh2photo", transform=True,direction="b2a")
-    value("painting_saunet_b2a", "vangogh2photo", transform=True,direction="b2a")
-    # value("painting_unet_sp_b2a", "vangogh2photo", transform=True,direction="b2a")
-
+    value("ukiyoe_resnet_b2a", "ukiyoe2photo", transform=True,direction="b2a")
+    value("ukiyoe_unet_b2a", "ukiyoe2photo", transform=True,direction="b2a")
+    value("ukiyoe_saunet_b2a", "ukiyoe2photo", transform=True,direction="b2a")
+    # value("map_resnet_a2b", "maps", transform=True,direction="a2b")
+    # value("map_unet_a2b", "maps", transform=True,direction="a2b")
+    # value("map_saunet_a2b", "maps", transform=True,direction="a2b")
     # value("painting_saunet_old", "vangogh2photo", transform=True)
 
 

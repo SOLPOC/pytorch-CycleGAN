@@ -7,6 +7,9 @@ from skimage import io
 import numpy as np
 import random
 from PIL import Image
+import os
+import cv2
+from skimage.metrics import structural_similarity as ssim
 
 
 def PSNR(img1, img2):
@@ -21,22 +24,33 @@ def PSNR(img1, img2):
     psnr = 20 * math.log10(PIXEL_MAX / math.sqrt(mse))
     return psnr
 
-def get_PSNR(fake_dir,standard_dir):
-    fake_imgs=os.listdir(fake_dir)
-    standard_imgs=os.listdir(standard_dir)
-    psnr=0.0
-    for fake_img in fake_imgs:
-        index_s = random.randint(0, len(standard_imgs) - 1)
-        fake_img_path=os.path.join(fake_dir,fake_img)
-        standard_img_path=os.path.join(standard_dir,standard_imgs[index_s])
-        psnr+=PSNR(Image.open(fake_img_path),Image.open(standard_img_path))
-    # print(len(fake_imgs))
-    return psnr/len(fake_imgs)
+def get_psnr(fake_folder,real_folder):
+    # 获取文件夹中的图片文件列表
+    fake_files = os.listdir(fake_folder)
+    real_files = os.listdir(real_folder)
+    t_score = 0
+    # 确保文件列表长度一致
+    assert len(fake_files) == len(real_files)
 
-def get_mean_PSNR(fake_dir,standard_dir,sum=10):
-    s_PSNR=0.0
-    for i in range(sum):
-        s_PSNR+=get_PSNR(fake_dir,standard_dir)
-    return s_PSNR/sum
+    for fake_file, real_file in zip(fake_files, real_files):
+        # 读取 fake 图片和 real 图片
+        fake_path = os.path.join(fake_folder, fake_file)
+        real_path = os.path.join(real_folder, real_file)
+
+        fake_img = cv2.imread(fake_path)
+        real_img = cv2.imread(real_path)
+
+        # 应用函数 calculate_ssim 计算 SSIM
+        psnr = PSNR(fake_img, real_img)
+        t_score += psnr
+        # 输出结果（这里可以根据需要保存到文件或进行其他处理）
+        print(f"For pair: {fake_file} and {real_file}, SSIM score is: {psnr}")
+    return t_score / len(fake_files)
+
+
+if __name__ == '__main__':
+    psnr = get_psnr("../results/map_saunet_a2b/test_latest/images/A_real",
+                    "../results/map_saunet_a2b/test_latest/images/B_fake")
+    print(psnr)
 
 
